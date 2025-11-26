@@ -1,0 +1,38 @@
+{
+  "name": "ScrimMaster Pro",
+  "short_name": "ScrimMaster",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#00ff9d",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+*(Note: You will need to put a square logo image named `icon-192.png` and `icon-512.png` in the public folder for the app icon to show up on the phone).*
+
+**B. Link Manifest in `index.html`**
+Open `index.html` and add this line inside the `<head>` tag:
+```html
+<link rel="manifest" href="/manifest.json">
+
+#### 3. Deploy to Vercel (Required for Android Link)
+1.  Push your code to GitHub.
+2.  Go to Vercel, import the project, and deploy.
+3.  You will get a link like `scrimmaster-app.vercel.app`.
+
+#### 4. How to Install on Android
+1.  Send the Vercel link to your WhatsApp or open it on your mobile Chrome.
+2.  **Method A:** Click the **"Install App"** button I added in the sidebar.
+3.  **Method B:** Tap the **3 dots** in Chrome (top right) -> **"Add to Home Screen"** or **"Install App"**.
+
+**Result:** The app will be installed on your home screen with an icon. When you open it, it will look exactly like a native app (no address bar) and work offline!
