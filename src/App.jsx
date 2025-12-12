@@ -3,7 +3,7 @@ import {
   Trophy, Upload, Users, Settings, Image as ImageIcon, 
   Download, Shield, Crosshair, Zap, FileText, ChevronRight, X, Play, 
   Sliders, Camera, Star, Share2, Globe, MessageCircle,
-  Plus, Trash2, Save, Move
+  Plus, Trash2, Save, Move, AlertOctagon, Maximize
 } from 'lucide-react';
 
 // --- INITIAL CONFIG ---
@@ -72,9 +72,10 @@ export default function ScrimMasterPro() {
     placements: { 1: 15, 2: 12, 3: 10, 4: 8, 5: 6, 6: 4, 7: 2, 8: 1, 9: 1, 10: 1, 11: 1, 12: 1, 13: 0, 14: 0, 15: 0, 16: 0 }
   });
 
-  // Data Entry State (Instead of Mock Data)
+  // Data Entry State
   const [matchEntries, setMatchEntries] = useState([]);
   const [results, setResults] = useState([]);
+  const [duplicateWarning, setDuplicateWarning] = useState(null);
 
   // Studio State
   const [cardMode, setCardMode] = useState('standings');
@@ -92,10 +93,12 @@ export default function ScrimMasterPro() {
   const [tableOpacity, setTableOpacity] = useState(90);
   const [textColor, setTextColor] = useState('light');
   const [tableYOffset, setTableYOffset] = useState(0);
-  const [tableXOffset, setTableXOffset] = useState(0); // Left/Right
-  const [rowSpacing, setRowSpacing] = useState(12); // Gap between rows
-  const [fontSize, setFontSize] = useState(14);
+  const [tableXOffset, setTableXOffset] = useState(0);
+  const [rowSpacing, setRowSpacing] = useState(8); 
+  const [fontSize, setFontSize] = useState(16);
   const [useTwoColumns, setUseTwoColumns] = useState(false);
+  const [cardScale, setCardScale] = useState(100); // NEW: Zoom/Scale
+  const [tableWidth, setTableWidth] = useState(100); // NEW: Width %
   
   const [bgBrightness, setBgBrightness] = useState(100);
   const [bgContrast, setBgContrast] = useState(100);
@@ -103,7 +106,6 @@ export default function ScrimMasterPro() {
 
   // Initialize Match Entries based on Teams
   useEffect(() => {
-    // When teams change, rebuild the entry list but keep existing data if possible
     const newEntries = teams.map(t => {
         const existing = matchEntries.find(e => e.teamId === t.id);
         return existing ? existing : {
@@ -117,6 +119,17 @@ export default function ScrimMasterPro() {
     }).sort((a, b) => a.slot - b.slot);
     setMatchEntries(newEntries);
   }, [teams]);
+
+  // DUPLICATE CHECKER
+  useEffect(() => {
+    const places = matchEntries.map(e => e.place).filter(p => p !== '' && p !== '0');
+    const duplicates = places.filter((item, index) => places.indexOf(item) !== index);
+    if (duplicates.length > 0) {
+      setDuplicateWarning(`Warning: Rank ${[...new Set(duplicates)].join(', ')} is assigned to multiple teams!`);
+    } else {
+      setDuplicateWarning(null);
+    }
+  }, [matchEntries]);
 
   // Load HTML2Canvas
   useEffect(() => {
@@ -132,8 +145,12 @@ export default function ScrimMasterPro() {
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
   }, []);
 
-  // --- LOGIC: CALCULATE RESULTS ---
+  // --- LOGIC ---
   const calculateResults = () => {
+    if (duplicateWarning) {
+        if(!confirm("Warning: Duplicate Ranks detected. Continue anyway?")) return;
+    }
+
     const calculated = matchEntries.map(entry => {
         const p = parseInt(entry.place) || 0;
         const k = parseInt(entry.kills) || 0;
@@ -141,15 +158,14 @@ export default function ScrimMasterPro() {
         const kPts = k * pointSystem.killPoint;
         return {
             ...entry,
-            placement: p, // Keep original input
+            placement: p,
             kills: k,
             placePts: pPts,
             killPts: kPts,
             totalPts: pPts + kPts
         };
-    }).filter(e => e.totalPts > 0 || e.placement > 0); // Only show teams that played
+    }).filter(e => e.totalPts > 0 || e.placement > 0); 
 
-    // Sort by Total Points
     calculated.sort((a, b) => b.totalPts - a.totalPts || b.killPts - a.killPts);
     setResults(calculated);
     setActiveTab('studio');
@@ -192,6 +208,21 @@ export default function ScrimMasterPro() {
       setMatchEntries(prev => prev.map(e => e.teamId === id ? { ...e, [field]: value } : e));
   };
 
+  const updateResultRow = (id, field, value) => {
+    setResults(prev => prev.map(row => {
+      if (row.id !== id) return row;
+      const updatedRow = { ...row, [field]: value };
+      if (field === 'kills' || field === 'placement') {
+        const k = field === 'kills' ? parseInt(value) || 0 : row.kills;
+        const p = field === 'placement' ? parseInt(value) || 0 : row.placement;
+        updatedRow.killPts = k * pointSystem.killPoint;
+        updatedRow.placePts = pointSystem.placements[p] || 0;
+        updatedRow.totalPts = updatedRow.killPts + updatedRow.placePts;
+      }
+      return updatedRow;
+    }));
+  };
+
   // --- RENDERERS ---
 
   const renderSidebar = () => (
@@ -227,6 +258,13 @@ export default function ScrimMasterPro() {
               </button>
           </div>
           
+          {duplicateWarning && (
+            <div className="mb-6 bg-red-500/20 border border-red-500 text-red-200 p-4 rounded-lg flex items-center gap-3 animate-pulse">
+                <AlertOctagon className="w-6 h-6" />
+                <span className="font-bold">{duplicateWarning}</span>
+            </div>
+          )}
+          
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
               <div className="grid grid-cols-12 bg-black p-3 text-xs font-bold text-zinc-500 uppercase">
                   <div className="col-span-1 text-center">Slot</div>
@@ -236,7 +274,7 @@ export default function ScrimMasterPro() {
               </div>
               <div className="divide-y divide-zinc-800 max-h-[60vh] overflow-y-auto">
                   {matchEntries.map((entry) => (
-                      <div key={entry.teamId} className="grid grid-cols-12 p-2 items-center hover:bg-white/5 transition-colors">
+                      <div key={entry.teamId} className={`grid grid-cols-12 p-2 items-center hover:bg-white/5 transition-colors ${matchEntries.filter(e => e.place === entry.place && e.place !== '').length > 1 ? 'bg-red-900/20' : ''}`}>
                           <div className="col-span-1 text-center font-mono text-zinc-400 bg-black/50 rounded py-1 mx-2">{entry.slot}</div>
                           <div className="col-span-5 font-bold text-white truncate px-2">{entry.teamName}</div>
                           <div className="col-span-3 px-2">
@@ -245,7 +283,7 @@ export default function ScrimMasterPro() {
                                 placeholder="-" 
                                 value={entry.place}
                                 onChange={(e) => handleEntryChange(entry.teamId, 'place', e.target.value)}
-                                className="w-full bg-black border border-zinc-700 text-white text-center rounded py-1 focus:border-emerald-500 focus:outline-none"
+                                className={`w-full bg-black border text-white text-center rounded py-1 focus:outline-none ${matchEntries.filter(e => e.place === entry.place && e.place !== '').length > 1 ? 'border-red-500' : 'border-zinc-700 focus:border-emerald-500'}`}
                               />
                           </div>
                           <div className="col-span-3 px-2">
@@ -262,7 +300,7 @@ export default function ScrimMasterPro() {
               </div>
           </div>
           <div className="mt-4 text-center text-zinc-500 text-sm">
-              Tip: Just enter Rank and Kills for playing teams. Points calculate automatically.
+              Note: Duplicate ranks will be highlighted in red.
           </div>
       </div>
   );
@@ -305,7 +343,7 @@ export default function ScrimMasterPro() {
 
           {/* ADVANCED OVERLAY CONTROLS */}
           <div className="space-y-2 bg-black/20 p-3 rounded border border-zinc-800">
-             <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-2"><Move className="w-3 h-3"/> Overlay Adjustments</label>
+             <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-2"><Move className="w-3 h-3"/> Layout Adjustments</label>
              
              <div className="grid grid-cols-2 gap-2 pt-2">
                  <div>
@@ -322,7 +360,15 @@ export default function ScrimMasterPro() {
                  </div>
                  <div>
                     <span className="text-[10px] text-zinc-400 block">Font Size ({fontSize}px)</span>
-                    <input type="range" min="8" max="24" value={fontSize} onChange={e => setFontSize(e.target.value)} className="w-full h-1 bg-zinc-700 rounded cursor-pointer" />
+                    <input type="range" min="8" max="32" value={fontSize} onChange={e => setFontSize(e.target.value)} className="w-full h-1 bg-zinc-700 rounded cursor-pointer" />
+                 </div>
+                 <div className="col-span-2">
+                    <span className="text-[10px] text-zinc-400 block flex items-center gap-2"><Maximize className="w-3 h-3"/> Card Scale (Zoom) {cardScale}%</span>
+                    <input type="range" min="50" max="150" value={cardScale} onChange={e => setCardScale(e.target.value)} className="w-full h-1 bg-zinc-700 rounded cursor-pointer" />
+                 </div>
+                 <div className="col-span-2">
+                    <span className="text-[10px] text-zinc-400 block">Table Width {tableWidth}%</span>
+                    <input type="range" min="50" max="100" value={tableWidth} onChange={e => setTableWidth(e.target.value)} className="w-full h-1 bg-zinc-700 rounded cursor-pointer" />
                  </div>
              </div>
              
@@ -350,7 +396,7 @@ export default function ScrimMasterPro() {
       <div className="flex-1 bg-zinc-950 flex items-center justify-center p-8 overflow-auto">
         <div 
             id="card-capture"
-            className="w-[1080px] min-h-[1080px] shadow-2xl relative overflow-hidden flex flex-col"
+            className="w-[1080px] min-h-[1920px] shadow-2xl relative overflow-hidden flex flex-col"
             style={{
               backgroundColor: selectedTheme === 'clean' || textColor === 'dark' ? '#f0f0f0' : '#09090b',
               color: textColor === 'dark' ? '#000' : '#fff',
@@ -368,66 +414,72 @@ export default function ScrimMasterPro() {
             </div>
             <div className="absolute inset-0 pointer-events-none opacity-20" style={{ background: `radial-gradient(circle at 50% 0%, ${accentColor}, transparent 70%)` }}></div>
 
-            {/* HEADER */}
-            <div className="relative z-10 p-12 flex justify-between items-start" style={{ paddingTop: '60px' }}>
-              <div className="flex flex-col gap-1 w-full">
-                 <div className="flex items-center gap-3">
-                    {customLogo && <img src={customLogo} className="w-24 h-24 object-contain drop-shadow-lg" alt="Org" />}
-                    <div className="w-full">
-                        <div className="text-sm font-bold tracking-[0.4em] uppercase opacity-70 mb-1"><CardText value={organizerName} onChange={setOrganizerName} /></div>
-                        <h1 className="text-7xl font-black uppercase italic tracking-tighter leading-none drop-shadow-lg"><CardText value={cardTitle} onChange={setCardTitle} /></h1>
-                        <div className="text-3xl font-bold uppercase tracking-widest opacity-90" style={{ color: accentColor }}><CardText value={cardSubtitle} onChange={setCardSubtitle} /></div>
-                    </div>
-                 </div>
-              </div>
-            </div>
-
-            {/* CONTENT BODY - FULLY ADJUSTABLE */}
-            <div className="relative z-10 p-8 flex-1 transition-all duration-200" 
-                 style={{ 
-                     paddingTop: `${parseInt(tableYOffset)}px`,
-                     paddingLeft: `${parseInt(tableXOffset) + 50}px`,
-                     paddingRight: `${50 - parseInt(tableXOffset)}px`
-                 }}>
-               
-               {cardMode === 'standings' && (
-                 <div className={useTwoColumns ? "grid grid-cols-2 gap-x-12" : "flex flex-col"} style={{ gap: `${rowSpacing}px` }}>
-                    {!useTwoColumns && (
-                        <div className="grid grid-cols-12 gap-4 text-sm font-bold opacity-70 uppercase px-6 py-2 rounded" style={{ backgroundColor: textColor === 'dark' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)' }}>
-                            <div className="col-span-1">#</div><div className="col-span-5">Team Name</div><div className="col-span-2 text-center">WWCD</div><div className="col-span-1 text-center">PP</div><div className="col-span-1 text-center">KP</div><div className="col-span-2 text-center">Total</div>
+            {/* SCALABLE CONTENT CONTAINER */}
+            <div className="absolute inset-0 w-full h-full flex flex-col" style={{ transform: `scale(${cardScale / 100})`, transformOrigin: 'top center' }}>
+                
+                {/* HEADER */}
+                <div className="relative z-10 p-12 flex justify-between items-start" style={{ paddingTop: '80px' }}>
+                <div className="flex flex-col gap-1 w-full">
+                    <div className="flex items-center gap-4">
+                        {customLogo && <img src={customLogo} className="w-28 h-28 object-contain drop-shadow-lg" alt="Org" />}
+                        <div className="w-full">
+                            <div className="text-xl font-bold tracking-[0.4em] uppercase opacity-70 mb-2"><CardText value={organizerName} onChange={setOrganizerName} /></div>
+                            <h1 className="text-8xl font-black uppercase italic tracking-tighter leading-none drop-shadow-lg"><CardText value={cardTitle} onChange={setCardTitle} /></h1>
+                            <div className="text-4xl font-bold uppercase tracking-widest opacity-90 mt-2" style={{ color: accentColor }}><CardText value={cardSubtitle} onChange={setCardSubtitle} /></div>
                         </div>
-                    )}
-                    {results.slice(0, useTwoColumns ? 32 : 16).map((r, i) => (
-                        <div key={i} className={`grid grid-cols-12 gap-4 items-center px-6 py-2 rounded-lg relative overflow-hidden`} 
-                             style={{ 
-                               backgroundColor: i === 0 ? accentColor : (textColor === 'dark' ? `rgba(255,255,255,${tableOpacity/100})` : `rgba(20,20,20,${tableOpacity/100})`), 
-                               color: i === 0 ? '#000' : 'inherit',
-                               fontSize: `${fontSize}px`,
-                               marginBottom: `${useTwoColumns ? rowSpacing : 0}px`
-                             }}> 
-                            <div className="col-span-1 font-mono font-black text-xl opacity-80">{i + 1 < 10 ? `0${i+1}` : i+1}</div>
-                            <div className="col-span-5 font-bold uppercase tracking-tight truncate flex items-center gap-2">
-                                {r.teamName} {i === 0 && <Trophy className="w-4 h-4" />}
-                            </div>
-                            <div className="col-span-2 text-center font-mono font-bold opacity-80">{r.placement === 1 ? '1' : '-'}</div>
-                            <div className="col-span-1 text-center font-mono opacity-80">{r.placePts}</div>
-                            <div className="col-span-1 text-center font-mono opacity-80">{r.killPts}</div>
-                            <div className="col-span-2 text-center text-xl font-black">{r.totalPts}</div>
-                        </div>
-                    ))}
-                 </div>
-               )}
-            </div>
-
-            {/* FOOTER */}
-            <div className="relative z-10 p-6 flex justify-between items-center text-white backdrop-blur-md" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-                <div className="flex items-center gap-4">
-                    <div className="text-xs font-bold tracking-widest uppercase opacity-60">Follow Us</div>
-                    <div className="flex gap-2 text-lg">
-                        <Share2 className="w-5 h-5"/> <Globe className="w-5 h-5"/> <MessageCircle className="w-5 h-5"/>
                     </div>
                 </div>
-                <div className="text-xs font-mono opacity-40 uppercase"><CardText value={footerText} onChange={setFooterText} /></div>
+                </div>
+
+                {/* CONTENT BODY - FULLY ADJUSTABLE */}
+                <div className="relative z-10 p-8 flex-1 transition-all duration-200" 
+                    style={{ 
+                        paddingTop: `${parseInt(tableYOffset)}px`,
+                        paddingLeft: `${parseInt(tableXOffset) + 50}px`,
+                        paddingRight: `${50 - parseInt(tableXOffset)}px`
+                    }}>
+                
+                {cardMode === 'standings' && (
+                    <div className="w-full mx-auto" style={{ width: `${tableWidth}%` }}>
+                        <div className={useTwoColumns ? "grid grid-cols-2 gap-x-12" : "flex flex-col"} style={{ gap: `${rowSpacing}px` }}>
+                            {!useTwoColumns && (
+                                <div className="grid grid-cols-12 gap-4 text-lg font-bold opacity-70 uppercase px-6 py-3 rounded" style={{ backgroundColor: textColor === 'dark' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)' }}>
+                                    <div className="col-span-1">#</div><div className="col-span-5">Team Name</div><div className="col-span-2 text-center">WWCD</div><div className="col-span-1 text-center">PP</div><div className="col-span-1 text-center">KP</div><div className="col-span-2 text-center">Total</div>
+                                </div>
+                            )}
+                            {results.slice(0, useTwoColumns ? 32 : 20).map((r, i) => (
+                                <div key={i} className={`grid grid-cols-12 gap-4 items-center px-6 py-3 rounded-xl relative overflow-hidden`} 
+                                    style={{ 
+                                    backgroundColor: i === 0 ? accentColor : (textColor === 'dark' ? `rgba(255,255,255,${tableOpacity/100})` : `rgba(20,20,20,${tableOpacity/100})`), 
+                                    color: i === 0 ? '#000' : 'inherit',
+                                    fontSize: `${fontSize}px`,
+                                    marginBottom: `${useTwoColumns ? rowSpacing : 0}px`
+                                    }}> 
+                                    <div className="col-span-1 font-mono font-black text-2xl opacity-80">{i + 1 < 10 ? `0${i+1}` : i+1}</div>
+                                    <div className="col-span-5 font-bold uppercase tracking-tight truncate flex items-center gap-3">
+                                        <CardText value={r.teamName} onChange={(val) => updateResultRow(r.id, 'teamName', val)} /> {i === 0 && <Trophy className="w-5 h-5" />}
+                                    </div>
+                                    <div className="col-span-2 text-center font-mono font-bold opacity-80 text-xl">{r.placement === 1 ? '1' : '-'}</div>
+                                    <div className="col-span-1 text-center font-mono opacity-80">{r.placePts}</div>
+                                    <div className="col-span-1 text-center font-mono opacity-80">{r.killPts}</div>
+                                    <div className="col-span-2 text-center text-3xl font-black">{r.totalPts}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                </div>
+
+                {/* FOOTER */}
+                <div className="relative z-10 p-8 flex justify-between items-center text-white backdrop-blur-md mt-auto" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                    <div className="flex items-center gap-6">
+                        <div className="text-sm font-bold tracking-widest uppercase opacity-60">Follow Us</div>
+                        <div className="flex gap-4 text-xl">
+                            <Share2 className="w-6 h-6"/> <Globe className="w-6 h-6"/> <MessageCircle className="w-6 h-6"/>
+                        </div>
+                    </div>
+                    <div className="text-sm font-mono opacity-40 uppercase"><CardText value={footerText} onChange={setFooterText} /></div>
+                </div>
             </div>
           </div>
       </div>
